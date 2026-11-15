@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KESTREL YARD — a tactical FPS in three.js</title>
+<style>
+  :root { --ink: #f2e7cf; --accent: #e08a3c; --panel: rgba(16, 14, 11, 0.72); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1c1712; }
+  body { font-family: system-ui, "Segoe UI", sans-serif; color: var(--ink); }
+  canvas.webgl { position: fixed; inset: 0; display: block; z-index: 0; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+  .panel { background: var(--panel); border: 1px solid rgba(242, 231, 207, 0.16); border-radius: 6px; }
+
+  /* Top centre: clock and score */
+  #topbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; padding: 6px 18px 8px; }
+  #timer { font-size: 30px; font-weight: 800; letter-spacing: 1px; line-height: 1; }
+  #scoreline { font-size: 14px; margin-top: 3px; }
+  #score-us { color: #ffb36b; font-weight: 800; }
+  #score-them { color: #7fb2e8; font-weight: 800; }
+  #round-label { opacity: 0.65; font-size: 11px; letter-spacing: 2px; margin-top: 2px; }
+  #alive-row { font-size: 11px; letter-spacing: 3px; margin-top: 2px; }
+  #alive-us { color: #ffb36b; }
+  #alive-them { color: #7fb2e8; }
+
+  /* Bottom left: health */
+  #vitals { position: absolute; left: 18px; bottom: 18px; padding: 10px 14px; min-width: 190px; }
+  #health-num { font-size: 34px; font-weight: 800; line-height: 1; }
+  #armor-tag { color: #9fd67a; font-size: 12px; font-weight: 700; margin-left: 8px; letter-spacing: 1px; }
+  #health-track { height: 7px; background: rgba(255,255,255,0.14); border-radius: 3px; margin-top: 7px; }
+  #health-bar { height: 100%; width: 100%; background: #7fc46a; border-radius: 3px; transition: width 0.15s; }
+  #grenade-counts { font-size: 12px; opacity: 0.8; margin-top: 7px; }
+
+  /* Bottom right: money and ammunition */
+  #purse { position: absolute; right: 18px; bottom: 18px; padding: 10px 14px; text-align: right; min-width: 170px; }
+  #money { color: #9fd67a; font-size: 19px; font-weight: 800; }
+  #weapon-name { font-size: 12px; letter-spacing: 1.5px; opacity: 0.75; margin-top: 2px; }
+  #ammo { margin-top: 2px; }
+  #ammo-mag { font-size: 34px; font-weight: 800; }
+  #ammo-reserve { font-size: 17px; opacity: 0.7; }
+
+  /* Crosshair and hitmarker */
+  #crosshair { --gap: 7px; position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  #crosshair i { position: absolute; background: rgba(255,255,255,0.92); box-shadow: 0 0 3px rgba(0,0,0,0.8); }
+  #crosshair i:nth-child(1) { width: 2px; height: 8px; left: -1px; top: calc(-8px - var(--gap)); }
+  #crosshair i:nth-child(2) { width: 2px; height: 8px; left: -1px; top: var(--gap); }
+  #crosshair i:nth-child(3) { width: 8px; height: 2px; top: -1px; left: calc(-8px - var(--gap)); }
+  #crosshair i:nth-child(4) { width: 8px; height: 2px; top: -1px; left: var(--gap); }
+  #hitmarker { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(45deg); font-size: 26px; font-weight: 300; opacity: 0; transition: opacity 0.08s; }
+
+  /* Banner, prompt, killfeed, minimap */
+  #banner { position: absolute; top: 21%; width: 100%; text-align: center; font-size: 44px; font-weight: 900; letter-spacing: 3px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 14px rgba(0,0,0,0.7); }
+  #banner-sub { position: absolute; top: calc(21% + 56px); width: 100%; text-align: center; font-size: 17px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 1px 8px rgba(0,0,0,0.8); }
+  #plant-prompt { position: absolute; bottom: 26%; width: 100%; text-align: center; font-size: 19px; font-weight: 700; opacity: 0; transition: opacity 0.2s; text-shadow: 0 1px 8px rgba(0,0,0,0.9); }
+  #killfeed { position: absolute; top: 12px; right: 14px; text-align: right; font-size: 13.5px; }
+  .feed-item { padding: 3px 9px; margin-bottom: 4px; background: var(--panel); border-radius: 4px; }
+  .feed-item.ours { color: #ffb36b; }
+  .feed-item.theirs { color: #7fb2e8; }
+  #minimap { position: absolute; top: 12px; left: 14px; border-radius: 6px; border: 1px solid rgba(242,231,207,0.2); }
+  #blind-note { position: absolute; bottom: 32%; width: 100%; text-align: center; font-size: 15px; opacity: 0; }
+
+  /* Buy menu */
+  #buymenu { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; grid-template-columns: 1fr 1fr; gap: 8px; width: 520px; padding: 16px; pointer-events: auto; }
+  #buymenu h2 { grid-column: 1 / -1; font-size: 19px; letter-spacing: 2px; }
+  #buymenu h2 span { color: #9fd67a; float: right; }
+  .buy-item { display: flex; align-items: center; gap: 9px; padding: 10px 12px; background: rgba(255,255,255,0.06); color: var(--ink); border: 1px solid rgba(242,231,207,0.18); border-radius: 6px; font-size: 15px; cursor: pointer; text-align: left; }
+  .buy-item:hover:not(:disabled) { background: rgba(224,138,60,0.25); }
+  .buy-item:disabled { opacity: 0.38; cursor: default; }
+  .buy-key { background: rgba(255,255,255,0.14); border-radius: 4px; padding: 1px 7px; font-weight: 800; }
+  .buy-price { margin-left: auto; color: #9fd67a; font-weight: 700; }
+
+  /* Full-screen overlays */
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 38%, rgba(46,61,85,0.88), rgba(14,12,10,0.96)); text-align: center; padding: 24px; z-index: 5; }
+  .overlay h1 { font-size: 54px; font-weight: 900; letter-spacing: 4px; color: var(--accent); text-shadow: 0 3px 20px rgba(0,0,0,0.6); }
+  .overlay h1 span { color: var(--ink); }
+  .overlay p { max-width: 620px; line-height: 1.55; opacity: 0.88; margin-top: 12px; font-size: 15.5px; }
+  .overlay .cols { display: flex; gap: 34px; margin-top: 18px; text-align: left; font-size: 14px; line-height: 1.7; opacity: 0.9; }
+  .overlay button { margin-top: 26px; padding: 13px 42px; font-size: 18px; font-weight: 800; letter-spacing: 1.5px; background: var(--accent); color: #1c1408; border: 0; border-radius: 7px; cursor: pointer; }
+  .overlay button:hover { background: #f09a4d; }
+  #matchend { display: none; }
+
+  /* Screen effects */
+  #vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 52%, rgba(190,20,10,0.5) 100%); opacity: 0; transition: opacity 0.25s; z-index: 2; }
+  #flash-overlay { position: fixed; inset: 0; pointer-events: none; background: #fff; opacity: 0; z-index: 2; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <div id="topbar" class="panel">
+    <div id="timer">1:40</div>
+    <div id="scoreline"><span id="score-us">0</span> — <span id="score-them">0</span></div>
+    <div id="alive-row"><span id="alive-us"></span> · <span id="alive-them"></span></div>
+    <div id="round-label">KESTREL YARD</div>
+  </div>
+  <div id="killfeed"></div>
+  <div id="vitals" class="panel">
+    <div><span id="health-num">100</span><span id="armor-tag"></span></div>
+    <div id="health-track"><div id="health-bar"></div></div>
+    <div id="grenade-counts">Frag 0 · Flash 0 — [G] [F]</div>
+  </div>
+  <div id="purse" class="panel">
+    <div id="money">$800</div>
+    <div id="weapon-name">P9 SIDEARM</div>
+    <div id="ammo"><span id="ammo-mag">12</span> <span id="ammo-reserve">/ 48</span></div>
+  </div>
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmarker">✕</div>
+  <div id="banner"></div>
+  <div id="banner-sub"></div>
+  <div id="plant-prompt"></div>
+  <div id="blind-note">FLASHED — hold your angle</div>
+  <div id="buymenu" class="panel"></div>
+</div>
+<div id="vignette"></div>
+<div id="flash-overlay"></div>
+
+<div id="menu" class="overlay">
+  <h1>KESTREL <span>YARD</span></h1>
+  <p>A round-based tactical shooter in three.js. You lead the <b style="color:#ffb36b">Ravens</b> into a dusk
+     freight yard: plant the charge at site <b>A</b> or <b>B</b> — or eliminate the <b style="color:#7fb2e8">Wardens</b> —
+     before the clock runs out. Win rounds, earn money, buy rifles, grenades and vests. First to 5 rounds takes the yard.</p>
+  <div class="cols">
+    <div><b>Move</b> WASD · <b>Crouch</b> Ctrl · <b>Jump</b> Space<br><b>Look</b> Mouse · <b>Fire</b> Left click · <b>Aim</b> Right click (DMR)<br><b>Reload</b> R · <b>Weapons</b> 1–5</div>
+    <div><b>Buy</b> B (freeze time) · <b>Plant / interact</b> hold E<br><b>Frag</b> G · <b>Flash</b> F<br>Stop moving to shoot straight. Headshots pay.</div>
+  </div>
+  <button id="play">DEPLOY</button>
+</div>
+
+<div id="matchend" class="overlay">
+  <h1 id="matchend-title">VICTORY</h1>
+  <p id="matchend-sub"></p>
+  <button id="again">PLAY AGAIN</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
