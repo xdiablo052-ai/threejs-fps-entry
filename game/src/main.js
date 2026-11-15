@@ -61,6 +61,7 @@ match.player.loadout = loadout;
 const view = new ViewModel(camera);
 const gunner = new Gunner(loadout, view);
 const grenades = new Grenades(scene);
+match.smokesRef = grenades;
 for (const bot of match.bots) scene.add(bot.mesh);
 
 // The charge, as a physical object once it leaves a carrier's hands.
@@ -118,6 +119,7 @@ const BUY_ITEMS = [
   { key: 'armor', label: 'Kevlar Vest', price: ARMOR_PRICE, kind: 'armor' },
   { key: 'frag', label: GRENADES.frag.name, price: GRENADES.frag.price, kind: 'grenade' },
   { key: 'flash', label: GRENADES.flash.name, price: GRENADES.flash.price, kind: 'grenade' },
+  { key: 'smoke', label: GRENADES.smoke.name, price: GRENADES.smoke.price, kind: 'grenade' },
 ];
 
 function refreshBuy() {
@@ -201,6 +203,10 @@ function step(dt) {
       if (input.wasPressed('KeyF') && loadout.grenades.flash > 0) {
         loadout.grenades.flash -= 1;
         grenades.throw('flash', eye, dir);
+      }
+      if (input.wasPressed('KeyV') && loadout.grenades.smoke > 0) {
+        loadout.grenades.smoke -= 1;
+        grenades.throw('smoke', eye, dir);
       }
       // Planting: hold E on a site while carrying the charge.
       if (input.down('KeyE') && match.bomb.state === 'carried' && match.bomb.carrier === player) {
@@ -317,7 +323,7 @@ function render() {
   // HUD state.
   hud.setHealth(body.health, loadout.armor);
   hud.setAmmo(loadout.magAmmo.mag, loadout.magAmmo.reserve, loadout.spec.name.toUpperCase());
-  hud.setGrenades(loadout.grenades.frag, loadout.grenades.flash);
+  hud.setGrenades(loadout.grenades.frag, loadout.grenades.flash, loadout.grenades.smoke);
   hud.setMoney(player.money);
   const phase = match.phase;
   if (phase === 'planted') {
@@ -408,6 +414,12 @@ if (SHOT !== null) {
     loadout.magAmmo.mag = 17;
     match.player.money = 2350;
     loadout.grenades.frag = 1;
+    loadout.grenades.smoke = 1;
+    // A smoke veil already blooming across the mid lane for the shot: the
+    // fuse is cut to near-zero so the cloud is up even at capture frame
+    // rates, bursting in the lane south of the weighbridge house.
+    grenades.throw('smoke', { x: -5, y: 1.5, z: 6 }, { x: 0.2, y: 0.02, z: -0.3 });
+    grenades.live[grenades.live.length - 1].fuse = 0.05;
     const foe = match.defenders[0];
     foe.body.x = 2;
     foe.body.z = -4;

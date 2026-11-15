@@ -139,6 +139,7 @@ export class Bot {
       if (angle > 1.35 && dist > 5) continue; // vision cone, unless point blank
       const targetEyeY = e.body.y + (e.body.crouching ? 0.85 : 1.35);
       if (losBlocked(world.colliders, eye.x, eye.y, eye.z, e.body.x, targetEyeY, e.body.z)) continue;
+      if (world.smokes && world.smokes.blocksView(eye.x, eye.y, eye.z, e.body.x, targetEyeY, e.body.z)) continue;
       if (dist < bestDist) { bestDist = dist; best = e; }
     }
     if (best !== null) {
@@ -240,13 +241,22 @@ export function buildBotMesh(team) {
     inner.add(m);
     return m;
   };
+  const vest = new THREE.MeshStandardMaterial({ color: 0x3a352b, roughness: 0.95 });
   add(0.17, 0.78, 0.2, -0.13, 0.39, 0, dark); // legs
   add(0.17, 0.78, 0.2, 0.13, 0.39, 0, dark);
+  add(0.2, 0.12, 0.23, -0.13, 0.82, 0, vest); // knee pads
+  add(0.2, 0.12, 0.23, 0.13, 0.82, 0, vest);
   add(0.52, 0.62, 0.28, 0, 1.09, 0, suit); // torso
+  add(0.44, 0.4, 0.06, 0, 1.12, 0.17, vest); // chest plate
+  add(0.44, 0.4, 0.06, 0, 1.12, -0.17, vest); // back plate
   add(0.14, 0.5, 0.16, -0.34, 1.12, 0.05, suit); // arms
   add(0.14, 0.5, 0.16, 0.34, 1.12, 0.05, suit);
+  add(0.18, 0.14, 0.18, -0.34, 1.42, 0.02, vest); // shoulder pads
+  add(0.18, 0.14, 0.18, 0.34, 1.42, 0.02, vest);
   add(0.24, 0.26, 0.24, 0, 1.56, 0, skin); // head
-  add(0.26, 0.1, 0.26, 0, 1.72, 0, dark); // cap
+  add(0.3, 0.13, 0.3, 0, 1.71, 0, vest); // helmet shell
+  add(0.34, 0.04, 0.34, 0, 1.65, 0, vest); // helmet brim
   add(0.09, 0.09, 0.72, 0.2, 1.18, 0.42, dark); // gun, pointing +Z of the mesh
+  add(0.05, 0.16, 0.05, 0.2, 1.02, 0.1, dark); // magazine under the gun
   return group;
 }

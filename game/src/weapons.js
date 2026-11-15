@@ -18,7 +18,7 @@ export class Loadout {
     for (const key of Object.keys(WEAPONS)) {
       this.ammo[key] = { mag: WEAPONS[key].mag, reserve: WEAPONS[key].reserve };
     }
-    this.grenades = { frag: 0, flash: 0 };
+    this.grenades = { frag: 0, flash: 0, smoke: 0 };
     this.armor = false;
     this.previous = 'pistol';
   }
@@ -89,6 +89,9 @@ export class ViewModel {
     add(st.thick * 0.7, 0.16, 0.09, 0, -0.11, -0.05, body); // magazine
     add(st.thick * 0.8, 0.05, st.len * 0.5, 0, st.thick * 1.05, -st.len / 2 + 0.08, accent); // top stripe
     add(0.03, 0.07, 0.03, 0, st.thick * 1.4, -st.len + 0.1, body); // front post
+    add(0.045, 0.05, 0.03, 0, st.thick * 1.35, 0.06, body); // rear sight
+    add(st.thick * 0.55, 0.13, 0.05, 0, -0.1, -st.len * 0.45, body); // foregrip
+    add(st.thick * 1.15, 0.04, st.len * 0.34, 0, -st.thick * 0.95, -st.len * 0.5, accent); // underbarrel rail accent
     if (key === 'dmr') add(0.05, 0.06, 0.18, 0, st.thick * 1.8, -0.2, body); // scope
     const flashMat = new THREE.MeshBasicMaterial({ color: 0xffc873, transparent: true, opacity: 0.95 });
     this.flash = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), flashMat);
@@ -207,25 +210,51 @@ export class Gunner {
   }
 }
 
-/** Thrown grenades: a frag with area damage, a flash that blinds. */
+/** Thrown grenades: a frag with area damage, a flash that blinds, and a
+ *  smoke that walls off a sightline for eleven seconds. */
 export class Grenades {
   constructor(scene) {
     this.live = [];
+    this.smokes = [];
     this.meshGeo = new THREE.SphereGeometry(0.09, 10, 8);
     this.fragMat = new THREE.MeshStandardMaterial({ color: 0x44502e, roughness: 0.6 });
     this.flashMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.4, metalness: 0.5 });
+    this.smokeMat = new THREE.MeshStandardMaterial({ color: 0x9aa48f, roughness: 0.5, metalness: 0.3 });
+    this.cloudGeo = new THREE.SphereGeometry(1, 12, 10);
     this.scene = scene;
   }
 
   throw(kind, from, dir) {
-    const mesh = new THREE.Mesh(this.meshGeo, kind === 'frag' ? this.fragMat : this.flashMat);
+    const mat = kind === 'frag' ? this.fragMat : kind === 'smoke' ? this.smokeMat : this.flashMat;
+    const mesh = new THREE.Mesh(this.meshGeo, mat);
     mesh.position.set(from.x, from.y, from.z);
     this.scene.add(mesh);
     this.live.push({
       kind, mesh,
       vx: dir.x * 15, vy: dir.y * 15 + 2.5, vz: dir.z * 15,
-      fuse: 1.5,
+      fuse: kind === 'smoke' ? 1.1 : 1.5,
     });
+  }
+
+  /** Does any live smoke cloud block the segment (bot perception uses this)? */
+  blocksView(x1, y1, z1, x2, y2, z2) {
+    for (const s of this.smokes) {
+      const cx = s.x;
+      const cy = 1.15;
+      const cz = s.z;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const dz = z2 - z1;
+      const len2 = dx * dx + dy * dy + dz * dz || 1;
+      let t = ((cx - x1) * dx + (cy - y1) * dy + (cz - z1) * dz) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const px = x1 + dx * t - cx;
+      const py = y1 + dy * t - cy;
+      const pz = z1 + dz * t - cz;
+      const r = s.r * s.grow;
+      if (px * px + py * py + pz * pz < r * r) return true;
+    }
+    return false;
   }
 
   update(dt, env) {
@@ -259,6 +288,23 @@ export class Grenades {
       }
     }
     this.live = still;
+
+    // Smoke clouds: bloom out over a second, hold, then thin and lift away.
+    const clouds = [];
+    for (const s of this.smokes) {
+      const age = env.now - s.born;
+      const remain = s.until - env.now;
+      if (remain <= 0) {
+        this.scene.remove(s.group);
+        continue;
+      }
+      s.grow = Math.min(1, age / 1.1);
+      const fade = Math.min(1, remain / 2.5);
+      s.group.scale.setScalar(0.35 + 0.65 * s.grow);
+      s.mat.opacity = 0.34 * Math.min(1, age / 0.5) * fade;
+      clouds.push(s);
+    }
+    this.smokes = clouds;
   }
 
   detonate(g, env) {
@@ -277,6 +323,29 @@ export class Grenades {
         applyDamage(t.body, spec.damage * (1 - d / (spec.radius + 1.5)));
         if (before > 0 && t.body.health <= 0) env.onGrenadeKill?.(t);
       }
+    } else if (g.kind === 'smoke') {
+      // A wall of vapour: a cluster of soft spheres that reads as one cloud
+      // and blocks bot sightlines (blocksView) while it stands.
+      env.sound.tone?.(320, 500, 0.06, 'sine');
+      const spec2 = GRENADES.smoke;
+      const group = new THREE.Group();
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xc4c7c2, transparent: true, opacity: 0, roughness: 1, depthWrite: false,
+      });
+      for (let i = 0; i < 13; i++) {
+        const m = new THREE.Mesh(this.cloudGeo, mat);
+        const a = (i / 13) * Math.PI * 2;
+        const rr = i === 0 ? 0 : spec2.radius * 0.42 * (0.5 + ((i * 37) % 10) / 20);
+        m.position.set(Math.cos(a) * rr, 0.75 + ((i * 53) % 10) / 9, Math.sin(a) * rr);
+        m.scale.setScalar(spec2.radius * (i === 0 ? 0.62 : 0.45));
+        group.add(m);
+      }
+      group.position.set(p.x, 0, p.z);
+      this.scene.add(group);
+      this.smokes.push({
+        group, mat, x: p.x, z: p.z, r: spec2.radius,
+        born: env.now, until: env.now + spec2.durationMs / 1000, grow: 0,
+      });
     } else {
       env.sound.tone?.(2400, 200, 0.1, 'sine');
       env.effects.puff({ x: p.x, y: p.y + 0.4, z: p.z }, 0xffffff, 2, 2);

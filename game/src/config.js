@@ -36,6 +36,7 @@ export const WEAPONS = {
 export const GRENADES = {
   frag: { name: 'Frag Charge', price: 300, damage: 92, radius: 6.5 },
   flash: { name: 'Blind Pepper', price: 200, durationMs: 2200 },
+  smoke: { name: 'Smoke Veil', price: 300, durationMs: 11000, radius: 3.4 },
 };
 
 export const ARMOR_PRICE = 650;

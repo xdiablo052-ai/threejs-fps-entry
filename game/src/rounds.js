@@ -161,6 +161,7 @@ export class Match {
       waypoints: this.waypointsRef,
       enemies,
       noise: this.noise,
+      smokes: this.smokesRef ?? null,
       onBotShot: (bot, eye, hit) => this.fx.onBotShot?.(bot, eye, hit),
       onKill: (attacker, victim, part) => onKill(attacker, victim, part),
     };

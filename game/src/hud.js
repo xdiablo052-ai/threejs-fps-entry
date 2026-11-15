@@ -33,8 +33,8 @@ export class HUD {
     this.el['weapon-name'].textContent = weaponName;
   }
 
-  setGrenades(frag, flash) {
-    this.el['grenade-counts'].textContent = `Frag ${frag} · Flash ${flash} — [G] [F]`;
+  setGrenades(frag, flash, smoke) {
+    this.el['grenade-counts'].textContent = `Frag ${frag} · Flash ${flash} · Smoke ${smoke} — [G] [F] [V]`;
   }
 
   setMoney(money) {
